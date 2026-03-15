@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #1a1a2e; font-family: sans-serif; color: #eee; flex-direction: column; gap: 16px; }
+  h1 { font-size: 1.5rem; letter-spacing: 2px; }
+  #status { font-size: 1.1rem; min-height: 1.4em; }
+  #board { display: grid; grid-template-columns: repeat(8, 72px); grid-template-rows: repeat(8, 72px); border: 3px solid #444; }
+  .square { width: 72px; height: 72px; display: flex; justify-content: center; align-items: center; font-size: 48px; cursor: pointer; user-select: none; }
+  .light { background: #f0d9b5; }
+  .dark { background: #b58863; }
+  .selected { outline: 3px solid #ff0; outline-offset: -3px; }
+  .highlight { background: rgba(255, 255, 0, 0.4) !important; }
+  button { padding: 8px 24px; font-size: 1rem; cursor: pointer; border: none; border-radius: 4px; background: #e94560; color: #fff; }
+  button:hover { background: #c73650; }
+</style>
+</head>
+<body>
+<h1>CHESS</h1>
+<div id="status">White's turn</div>
+<div id="board"></div>
+<button onclick="init()">New Game</button>
+
+<script>
+const PIECES = {
+  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
+  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟'
+};
+
+let board, turn, selected, gameOver;
+
+function init() {
+  board = [
+    ['r','n','b','q','k','b','n','r'],
+    ['p','p','p','p','p','p','p','p'],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    ['P','P','P','P','P','P','P','P'],
+    ['R','N','B','Q','K','B','N','R'],
+  ];
+  turn = 'white';
+  selected = null;
+  gameOver = false;
+  render();
+  setStatus("White's turn");
+}
+
+function isWhite(p) { return p && p === p.toUpperCase(); }
+function isBlack(p) { return p && p === p.toLowerCase(); }
+function isOwn(p) { return turn === 'white' ? isWhite(p) : isBlack(p); }
+function isEnemy(p) { return turn === 'white' ? isBlack(p) : isWhite(p); }
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function getValidMoves(r, c) {
+  const piece = board[r][c];
+  if (!piece) return [];
+  const moves = [];
+  const type = piece.toLowerCase();
+  const white = isWhite(piece);
+
+  const addIf = (nr, nc) => {
+    if (nr < 0 || nr > 7 || nc < 0 || nc > 7) return false;
+    const target = board[nr][nc];
+    if (target && ((white && isWhite(target)) || (!white && isBlack(target)))) return false;
+    moves.push([nr, nc]);
+    return !target; // return true if square was empty (for sliding pieces)
+  };
+
+  if (type === 'p') {
+    const dir = white ? -1 : 1;
+    const startRow = white ? 6 : 1;
+    // Forward
+    if (!board[r + dir]?.[c]) {
+      moves.push([r + dir, c]);
+      if (r === startRow && !board[r + 2 * dir]?.[c]) moves.push([r + 2 * dir, c]);
+    }
+    // Captures
+    for (const dc of [-1, 1]) {
+      const nr = r + dir, nc = c + dc;
+      if (nr >= 0 && nr <= 7 && nc >= 0 && nc <= 7 && board[nr][nc] && ((white && isBlack(board[nr][nc])) || (!white && isWhite(board[nr][nc])))) {
+        moves.push([nr, nc]);
+      }
+    }
+  } else if (type === 'n') {
+    for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) addIf(r+dr, c+dc);
+  } else if (type === 'k') {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (dr||dc) addIf(r+dr, c+dc);
+  } else {
+    const dirs = type === 'r' ? [[1,0],[-1,0],[0,1],[0,-1]] :
+                 type === 'b' ? [[1,1],[1,-1],[-1,1],[-1,-1]] :
+                 [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]; // queen
+    for (const [dr, dc] of dirs) {
+      for (let i = 1; i < 8; i++) {
+        if (!addIf(r + dr*i, c + dc*i)) break;
+      }
+    }
+  }
+  return moves;
+}
+
+function handleClick(r, c) {
+  if (gameOver) return;
+  const piece = board[r][c];
+
+  if (selected) {
+    const [sr, sc] = selected;
+    const moves = getValidMoves(sr, sc);
+    if (moves.some(([mr, mc]) => mr === r && mc === c)) {
+      // Capture king = game over
+      if (board[r][c] && board[r][c].toLowerCase() === 'k') {
+        gameOver = true;
+        setStatus(`${turn === 'white' ? 'White' : 'Black'} wins!`);
+      }
+      // Move piece
+      board[r][c] = board[sr][sc];
+      board[sr][sc] = null;
+      // Pawn promotion
+      if (board[r][c].toLowerCase() === 'p' && (r === 0 || r === 7)) {
+        board[r][c] = isWhite(board[r][c]) ? 'Q' : 'q';
+      }
+      if (!gameOver) {
+        turn = turn === 'white' ? 'black' : 'white';
+        setStatus(`${turn === 'white' ? "White" : "Black"}'s turn`);
+      }
+      selected = null;
+      render();
+      return;
+    }
+    selected = null;
+  }
+
+  if (piece && isOwn(piece)) {
+    selected = [r, c];
+  }
+  render();
+}
+
+function render() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  const moves = selected ? getValidMoves(selected[0], selected[1]) : [];
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const sq = document.createElement('div');
+      sq.className = 'square ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      if (selected && selected[0] === r && selected[1] === c) sq.classList.add('selected');
+      if (moves.some(([mr, mc]) => mr === r && mc === c)) sq.classList.add('highlight');
+      if (board[r][c]) sq.textContent = PIECES[board[r][c]];
+      sq.onclick = () => handleClick(r, c);
+      boardEl.appendChild(sq);
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>
